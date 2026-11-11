@@ -14,16 +14,17 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.inspection import permutation_importance
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_validate
 
 from churn.data import PROJECT_ROOT, load_dataset
 from churn.models import get_candidates
+from churn.plots import OOF_FILE, REPORT_DIR, RESULTS_FILE, make_all_plots
 
 SELECTION_METRIC = "roc_auc"
 METRICS = ["roc_auc", "average_precision", "f1", "precision", "recall", "accuracy"]
 
 MODEL_PATH = PROJECT_ROOT / "models" / "churn_model.joblib"
-REPORT_DIR = PROJECT_ROOT / "reports"
 
 
 def nested_cv(
@@ -32,20 +33,50 @@ def nested_cv(
     outer_folds: int = 5,
     inner_folds: int = 3,
     random_state: int = 42,
-) -> dict:
-    """Run nested CV for every candidate model and return per-model results."""
+) -> tuple[dict, pd.DataFrame]:
+    """Run nested CV for every candidate model.
+
+    Returns:
+        results: per-model scores, chosen settings and feature importance.
+        oof: every customer's churn probability from each model, predicted by
+            the outer fold that held that customer out ("out-of-fold"). Used
+            for ROC curves without any customer being scored by a model that
+            trained on them.
+    """
     outer_cv = StratifiedKFold(outer_folds, shuffle=True, random_state=random_state)
     inner_cv = StratifiedKFold(inner_folds, shuffle=True, random_state=random_state)
 
     results = {}
+    oof = pd.DataFrame({"y_true": y.to_numpy()}, index=X.index)
     for name, (pipeline, grid) in get_candidates(random_state).items():
         print(f"Running nested CV for {name}...")
         search = GridSearchCV(
             pipeline, grid, cv=inner_cv, scoring=SELECTION_METRIC, n_jobs=-1
         )
         scores = cross_validate(
-            search, X, y, cv=outer_cv, scoring=METRICS, return_estimator=True
+            search,
+            X,
+            y,
+            cv=outer_cv,
+            scoring=METRICS,
+            return_estimator=True,
+            return_indices=True,
         )
+
+        proba = np.empty(len(X))
+        fold_importances = []
+        for est, test_idx in zip(scores["estimator"], scores["indices"]["test"]):
+            X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
+            proba[test_idx] = est.predict_proba(X_test)[:, 1]
+            # How much does the held-out score drop when one column is shuffled?
+            imp = permutation_importance(
+                est, X_test, y_test, scoring=SELECTION_METRIC,
+                n_repeats=5, random_state=random_state, n_jobs=-1,
+            )
+            fold_importances.append(imp.importances_mean)
+        oof[name] = proba
+        fold_importances = np.array(fold_importances)
+
         results[name] = {
             "metrics": {
                 m: {
@@ -56,10 +87,17 @@ def nested_cv(
                 for m in METRICS
             },
             "best_params_per_fold": [est.best_params_ for est in scores["estimator"]],
+            "permutation_importance": {
+                feature: {
+                    "mean": float(fold_importances[:, i].mean()),
+                    "std": float(fold_importances[:, i].std()),
+                }
+                for i, feature in enumerate(X.columns)
+            },
         }
         mean = results[name]["metrics"][SELECTION_METRIC]["mean"]
         print(f"  {SELECTION_METRIC}: {mean:.4f}")
-    return results
+    return results, oof
 
 
 def pick_best(results: dict) -> str:
@@ -106,7 +144,7 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     X, y = load_dataset()
-    results = nested_cv(X, y, args.outer_folds, args.inner_folds, args.seed)
+    results, oof = nested_cv(X, y, args.outer_folds, args.inner_folds, args.seed)
     best = pick_best(results)
     print(f"Best model: {best}. Fitting on all data...")
     model, params = fit_final_model(best, X, y, args.inner_folds, args.seed)
@@ -124,12 +162,13 @@ def main(argv=None) -> None:
         "seed": args.seed,
         "results": results,
     }
-    (REPORT_DIR / "nested_cv_results.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8"
-    )
+    (REPORT_DIR / RESULTS_FILE).write_text(json.dumps(report, indent=2), encoding="utf-8")
+    oof.to_csv(REPORT_DIR / OOF_FILE, index=False, float_format="%.5f")
     write_markdown_report(results, best, REPORT_DIR / "nested_cv_results.md")
     print(f"Saved model to {MODEL_PATH}")
-    print(f"Saved reports to {REPORT_DIR}")
+
+    make_all_plots(REPORT_DIR)
+    print(f"Saved reports and charts to {REPORT_DIR}")
 
 
 if __name__ == "__main__":
