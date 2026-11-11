@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Churn Risk Predictor</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --border: rgba(11, 11, 11, 0.10);
+    --grid: #e1e0d9;
+    --accent: #2a78d6;
+    --good: #0ca30c;
+    --critical: #d03b3b;
+    --good-text: #006300;
+    --critical-text: #b42d2d;
+    --track-good: #d6efd6;
+    --track-critical: #f6d8d8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --border: rgba(255, 255, 255, 0.10);
+      --grid: #2c2c2a;
+      --accent: #3987e5;
+      --good-text: #0ca30c;
+      --critical-text: #e66767;
+      --track-good: #1d3a1d;
+      --track-critical: #432222;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --border: rgba(255, 255, 255, 0.10);
+    --grid: #2c2c2a;
+    --accent: #3987e5;
+    --good-text: #0ca30c;
+    --critical-text: #e66767;
+    --track-good: #1d3a1d;
+    --track-critical: #432222;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
+  header h1 { font-size: 24px; margin: 0 0 4px; font-weight: 650; }
+  header p { margin: 0; color: var(--ink-2); }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 24px;
+    margin-top: 24px;
+    align-items: start;
+  }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+    .layout .result { position: static; order: -1; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  fieldset { border: 0; margin: 0 0 20px; padding: 0; min-width: 0; }
+  fieldset:last-child { margin-bottom: 0; }
+  legend {
+    font-size: 13px; font-weight: 600; color: var(--ink-2);
+    padding: 0 0 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  select, input[type="number"] {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    background: var(--page);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+  }
+  select:disabled { color: var(--muted); }
+  select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-value { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .result { position: sticky; top: 16px; }
+  .result h2 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  .hero { font-size: 56px; font-weight: 650; line-height: 1.1; margin: 8px 0 6px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+  .status .icon {
+    width: 18px; height: 18px; border-radius: 50%; display: inline-grid;
+    place-items: center; color: #fff; font-size: 11px;
+  }
+  .status.good { color: var(--good-text); }
+  .status.good .icon { background: var(--good); }
+  .status.critical { color: var(--critical-text); }
+  .status.critical .icon { background: var(--critical); }
+
+  .meter { position: relative; margin: 18px 0 40px; }
+  .meter-track { height: 10px; border-radius: 5px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 5px; transition: width 0.25s ease; }
+  .meter-tick {
+    position: absolute; top: -4px; width: 2px; height: 18px;
+    background: var(--ink-2); transform: translateX(-1px);
+  }
+  .meter-tick span {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+
+  .whatif h3 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
+  .whatif ul { list-style: none; margin: 0; padding: 0; }
+  .whatif li {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 12px;
+    padding: 8px 0; border-top: 1px solid var(--grid); align-items: baseline;
+  }
+  .whatif .new { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .whatif .delta { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 70px; text-align: right; }
+  .delta.down { color: var(--good-text); }
+  .delta.up { color: var(--critical-text); }
+  .empty { color: var(--muted); font-size: 13px; padding-top: 8px; border-top: 1px solid var(--grid); }
+
+  .note { font-size: 12px; color: var(--muted); margin-top: 18px; }
+  .error {
+    margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--critical); color: var(--critical-text); font-size: 13px;
+  }
+  footer { margin-top: 24px; font-size: 13px; color: var(--muted); }
+  footer a { color: var(--accent); }
+  .busy .hero { opacity: 0.55; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Churn Risk Predictor</h1>
+    <p>Change a customer's details to see how likely they are to cancel. Predictions come live from the API.</p>
+  </header>
+
+  <div class="layout">
+    <form id="form" class="card" autocomplete="off">
+      <fieldset>
+        <legend>Account</legend>
+        <div class="grid">
+          <div style="grid-column: 1 / -1">
+            <label for="tenure">Months with the company</label>
+            <div class="slider-row">
+              <input type="range" id="tenure" name="tenure" min="0" max="72" value="2">
+              <output class="slider-value" id="tenure-out" for="tenure">2 mo</output>
+            </div>
+          </div>
+          <div>
+            <label for="MonthlyCharges">Monthly bill ($)</label>
+            <input type="number" id="MonthlyCharges" name="MonthlyCharges" min="0" max="200" step="0.05" value="85">
+            <div class="hint" id="total-hint"></div>
+          </div>
+          <div data-field="Contract"></div>
+          <div data-field="PaymentMethod"></div>
+          <div data-field="PaperlessBilling"></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Services</legend>
+        <div class="grid">
+          <div data-field="PhoneService"></div>
+          <div data-field="MultipleLines"></div>
+          <div data-field="InternetService"></div>
+          <div data-field="OnlineSecurity"></div>
+          <div data-field="OnlineBackup"></div>
+          <div data-field="DeviceProtection"></div>
+          <div data-field="TechSupport"></div>
+          <div data-field="StreamingTV"></div>
+          <div data-field="StreamingMovies"></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Customer</legend>
+        <div class="grid">
+          <div data-field="gender"></div>
+          <div data-field="SeniorCitizen"></div>
+          <div data-field="Partner"></div>
+          <div data-field="Dependents"></div>
+        </div>
+      </fieldset>
+    </form>
+
+    <aside class="card result" id="result" aria-live="polite">
+      <h2>Churn risk</h2>
+      <div class="hero" id="prob">–</div>
+      <div class="status" id="status"></div>
+
+      <div class="meter" id="meter" role="img" aria-label="">
+        <div class="meter-track" id="track"><div class="meter-fill" id="fill" style="width:0"></div></div>
+        <div class="meter-tick" id="tick" hidden><span id="tick-label"></span></div>
+      </div>
+
+      <div class="whatif">
+        <h3>What would change the risk</h3>
+        <ul id="whatifs"></ul>
+      </div>
+
+      <div id="error" class="error" hidden></div>
+
+      <p class="note">
+        The model is trained to catch churners, so probabilities run high.
+        Compare customers against each other rather than reading the number as an exact chance.
+      </p>
+    </aside>
+  </div>
+
+  <footer>
+    Model selected with nested cross-validation · <a href="/docs">API docs</a>
+  </footer>
+</div>
+
+<script>
+const YES_NO = ["No", "Yes"];
+const FIELDS = {
+  Contract:         { label: "Contract", options: ["Month-to-month", "One year", "Two year"], value: "Month-to-month" },
+  PaymentMethod:    { label: "Payment method", options: ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"], value: "Electronic check" },
+  PaperlessBilling: { label: "Paperless billing", options: YES_NO, value: "Yes" },
+  PhoneService:     { label: "Phone service", options: YES_NO, value: "Yes" },
+  MultipleLines:    { label: "Multiple lines", options: YES_NO, value: "No", needs: "PhoneService", offValue: "No phone service" },
+  InternetService:  { label: "Internet", options: ["DSL", "Fiber optic", "No"], value: "Fiber optic" },
+  OnlineSecurity:   { label: "Online security", options: YES_NO, value: "No", needs: "InternetService", offValue: "No internet service" },
+  OnlineBackup:     { label: "Online backup", options: YES_NO, value: "No", needs: "InternetService", offValue: "No internet service" },
+  DeviceProtection: { label: "Device protection", options: YES_NO, value: "No", needs: "InternetService", offValue: "No internet service" },
+  TechSupport:      { label: "Tech support", options: YES_NO, value: "No", needs: "InternetService", offValue: "No internet service" },
+  StreamingTV:      { label: "Streaming TV", options: YES_NO, value: "Yes", needs: "InternetService", offValue: "No internet service" },
+  StreamingMovies:  { label: "Streaming movies", options: YES_NO, value: "Yes", needs: "InternetService", offValue: "No internet service" },
+  gender:           { label: "Gender", options: ["Female", "Male"], value: "Female" },
+  SeniorCitizen:    { label: "Senior citizen", options: YES_NO, value: "No" },
+  Partner:          { label: "Partner", options: YES_NO, value: "No" },
+  Dependents:       { label: "Dependents", options: YES_NO, value: "No" },
+};
+
+const $ = (id) => document.getElementById(id);
+const form = $("form");
+
+// Build a <select> for every field placeholder.
+for (const [name, f] of Object.entries(FIELDS)) {
+  const slot = document.querySelector(`[data-field="${name}"]`);
+  slot.innerHTML = `<label for="${name}">${f.label}</label><select id="${name}" name="${name}"></select>`;
+  setOptions($(name), f.options, f.value);
+}
+
+function setOptions(select, options, value) {
+  select.innerHTML = options.map((o) => `<option>${o}</option>`).join("");
+  select.value = options.includes(value) ? value : options[0];
+}
+
+// Keep dependent fields valid: no internet means every internet add-on is
+// "No internet service", and no phone means "No phone service".
+function syncDependents() {
+  for (const [name, f] of Object.entries(FIELDS)) {
+    if (!f.needs) continue;
+    const select = $(name);
+    const parentOn = $(f.needs).value !== "No";
+    const isOff = select.value === f.offValue;
+    if (!parentOn && !isOff) {
+      select.dataset.saved = select.value;
+      setOptions(select, [f.offValue], f.offValue);
+      select.disabled = true;
+    } else if (parentOn && isOff) {
+      setOptions(select, f.options, select.dataset.saved || f.value);
+      select.disabled = false;
+    }
+  }
+}
+
+function readCustomer() {
+  const tenure = Number($("tenure").value);
+  const monthly = Number($("MonthlyCharges").value) || 0;
+  const customer = {
+    tenure,
+    MonthlyCharges: monthly,
+    // Not asked for: estimated from tenure x monthly bill.
+    TotalCharges: Math.round(tenure * monthly * 100) / 100,
+  };
+  for (const name of Object.keys(FIELDS)) customer[name] = $(name).value;
+  customer.SeniorCitizen = customer.SeniorCitizen === "Yes" ? 1 : 0;
+  return customer;
+}
+
+// Alternative versions of the customer to compare against.
+function whatIfs(c) {
+  const list = [];
+  const hasInternet = c.InternetService !== "No";
+  if (c.Contract === "Month-to-month") list.push(["One-year contract", { Contract: "One year" }]);
+  if (c.Contract !== "Two year") list.push(["Two-year contract", { Contract: "Two year" }]);
+  if (["Electronic check", "Mailed check"].includes(c.PaymentMethod))
+    list.push(["Automatic bank transfer", { PaymentMethod: "Bank transfer (automatic)" }]);
+  if (hasInternet && c.TechSupport === "No") list.push(["Add tech support", { TechSupport: "Yes" }]);
+  if (hasInternet && c.OnlineSecurity === "No") list.push(["Add online security", { OnlineSecurity: "Yes" }]);
+  if (c.InternetService === "Fiber optic") list.push(["Switch fiber to DSL", { InternetService: "DSL" }]);
+  return list.map(([label, change]) => ({ label, customer: { ...c, ...change } }));
+}
+
+const pct = (p) => `${Math.round(p * 100)}%`;
+
+function render(current, alternatives) {
+  const p = current.churn_probability;
+  const risky = current.will_churn;
+  $("prob").textContent = pct(p);
+
+  const status = $("status");
+  status.className = "status " + (risky ? "critical" : "good");
+  status.innerHTML = risky
+    ? '<span class="icon" aria-hidden="true">!</span>Likely to churn'
+    : '<span class="icon" aria-hidden="true">✓</span>Likely to stay';
+
+  $("track").style.background = risky ? "var(--track-critical)" : "var(--track-good)";
+  const fill = $("fill");
+  fill.style.width = `${p * 100}%`;
+  fill.style.background = risky ? "var(--critical)" : "var(--good)";
+  $("tick").hidden = false;
+  $("tick").style.left = `${current.threshold * 100}%`;
+  $("tick-label").textContent = `${pct(current.threshold)} cutoff`;
+  $("meter").setAttribute("aria-label",
+    `Churn risk ${pct(p)}, cutoff ${pct(current.threshold)}: ${risky ? "likely to churn" : "likely to stay"}`);
+
+  const rows = alternatives
+    .map((a) => ({ ...a, delta: Math.round((a.p - p) * 100) }))
+    .sort((a, b) => a.p - b.p)
+    .slice(0, 5);
+  const ul = $("whatifs");
+  if (!rows.length) {
+    ul.innerHTML = '<li class="empty" style="display:block">No common changes left to try for this customer.</li>';
+    return;
+  }
+  ul.innerHTML = rows.map((r) => {
+    const dir = r.delta < 0 ? "down" : r.delta > 0 ? "up" : "";
+    const arrow = r.delta < 0 ? "▼" : r.delta > 0 ? "▲" : "";
+    const sign = r.delta > 0 ? "+" : r.delta < 0 ? "−" : "±";
+    return `<li><span>${r.label}</span><span class="new">${pct(r.p)}</span>
+      <span class="delta ${dir}">${arrow} ${sign}${Math.abs(r.delta)} pts</span></li>`;
+  }).join("");
+}
+
+let timer, requestId = 0;
+function schedulePredict() {
+  clearTimeout(timer);
+  timer = setTimeout(predict, 120);
+}
+
+async function predict() {
+  const id = ++requestId;
+  const customer = readCustomer();
+  const alts = whatIfs(customer);
+  $("result").classList.add("busy");
+  try {
+    const res = await fetch("/predict/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customers: [customer, ...alts.map((a) => a.customer)] }),
+    });
+    const body = await res.json();
+    if (id !== requestId) return; // a newer request has started
+    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "The API rejected the input.");
+    const [current, ...rest] = body.predictions;
+    render(current, alts.map((a, i) => ({ label: a.label, p: rest[i].churn_probability })));
+    $("error").hidden = true;
+  } catch (err) {
+    if (id !== requestId) return;
+    $("error").textContent = err.message || "Could not reach the API.";
+    $("error").hidden = false;
+  } finally {
+    if (id === requestId) $("result").classList.remove("busy");
+  }
+}
+
+function updateLabels() {
+  const c = readCustomer();
+  $("tenure-out").textContent = `${c.tenure} mo`;
+  $("total-hint").textContent = `Total billed so far ≈ $${c.TotalCharges.toLocaleString()}`;
+}
+
+form.addEventListener("input", () => { syncDependents(); updateLabels(); schedulePredict(); });
+form.addEventListener("submit", (e) => e.preventDefault());
+syncDependents();
+updateLabels();
+predict();
+</script>
+</body>
+</html>

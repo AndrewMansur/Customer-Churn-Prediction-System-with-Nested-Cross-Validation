@@ -26,10 +26,11 @@ def client(model_path):
         yield c
 
 
-def test_root_redirects_to_docs(client):
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/docs"
+def test_home_page_is_served(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Churn Risk Predictor" in response.text
 
 
 def test_health_ok(client):

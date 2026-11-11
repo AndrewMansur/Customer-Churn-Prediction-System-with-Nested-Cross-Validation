@@ -1,7 +1,8 @@
 """HTTP API that serves churn predictions.
 
 Run with:  uvicorn churn.api:app --reload
-Docs at:   http://127.0.0.1:8000/docs
+Web page:  http://127.0.0.1:8000
+API docs:  http://127.0.0.1:8000/docs
 """
 
 import os
@@ -9,11 +10,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 
 from churn.predict import DEFAULT_THRESHOLD, load_model, predict_proba
 from churn.schemas import BatchRequest, BatchResponse, Customer, Health, Prediction
 from churn.train import MODEL_PATH
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app(model_path: Path | str | None = None) -> FastAPI:
@@ -58,8 +61,9 @@ def create_app(model_path: Path | str | None = None) -> FastAPI:
         ]
 
     @app.get("/", include_in_schema=False)
-    def root():
-        return RedirectResponse("/docs")
+    def home():
+        """Interactive page for trying predictions in the browser."""
+        return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/health", response_model=Health)
     def health():
