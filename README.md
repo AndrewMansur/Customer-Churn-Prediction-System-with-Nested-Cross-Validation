@@ -143,24 +143,7 @@ Every field is required, and categorical fields only accept the values seen in t
 | `CHURN_MODEL_PATH` | `models/churn_model.joblib` | Model file to load |
 | `CHURN_THRESHOLD` | `0.5` | Probability at or above which `will_churn` is true |
 
-## Project structure
 
-```
-data/                          Telco customer churn dataset
-src/churn/
-  data.py                      Load, validate and clean the raw data
-  features.py                  Preprocessing (one-hot encoding, scaling)
-  models.py                    Candidate models and hyperparameter grids
-  train.py                     Nested CV, model selection, final training
-  plots.py                     Result charts
-  schemas.py                   API request and response validation
-  predict.py                   Load the model and make predictions
-  api.py                       FastAPI app
-  static/index.html            Web page
-tests/                         pytest suite
-reports/                       Results table, JSON details and charts
-docs/                          README images
-```
 
 ## Data cleaning notes
 
