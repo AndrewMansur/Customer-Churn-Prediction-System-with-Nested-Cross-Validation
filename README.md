@@ -144,13 +144,6 @@ Every field is required, and categorical fields only accept the values seen in t
 | `CHURN_THRESHOLD` | `0.5` | Probability at or above which `will_churn` is true |
 
 
-
-## Data cleaning notes
-
-- `TotalCharges` is stored as text in the raw file. The 11 blank values all belong to customers with a tenure of 0 who haven't been billed yet, so they are set to 0. A blank value for any other customer raises an error instead of being filled in silently.
-- `customerID` is dropped because it carries no predictive signal.
-- About 26.5% of customers churned. All models use balanced class weights, and the folds are stratified so each one keeps the same churn rate.
-
 ## Limitations
 
 - **Probabilities run high.** Balanced class weights help the model catch churners but push all probabilities upward, so a score is best used to rank customers rather than read as an exact chance. Calibrating the model would fix this.
